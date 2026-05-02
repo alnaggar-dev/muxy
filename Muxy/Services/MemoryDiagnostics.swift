@@ -1,7 +1,6 @@
 import AppKit
 import Darwin
 import Foundation
-import MetricKit
 import os
 #if canImport(Darwin)
 import Darwin.libproc
@@ -13,20 +12,20 @@ private let logger = Logger(subsystem: "app.muxy", category: "MemoryDiagnostics"
 final class MemoryDiagnostics: NSObject {
     static let shared = MemoryDiagnostics()
 
-    private static let periodicLoggingDefaultsKey = "MuxyDiagnosticsPeriodicLogging"
-    private static let maxLogBytes: Int = 512 * 1024
-    private static let maxSnapshotFiles = 3
-    private static let samplingInterval: TimeInterval = 60
+    nonisolated private static let periodicLoggingDefaultsKey = "MuxyDiagnosticsPeriodicLogging"
+    nonisolated private static let maxLogBytes: Int = 512 * 1024
+    nonisolated private static let maxSnapshotFiles = 3
+    nonisolated private static let samplingInterval: TimeInterval = 60
 
-    private static let crumbInterval: TimeInterval = 60
+    nonisolated private static let crumbInterval: TimeInterval = 60
 
     private let writeQueue = DispatchQueue(label: "app.muxy.diagnostics", qos: .utility)
     private var samplingTimer: DispatchSourceTimer?
     private var crumbTimer: DispatchSourceTimer?
-    private var disabledForSession = false
+    nonisolated(unsafe) private var disabledForSession = false
     private weak var appState: AppState?
-    private let isoFormatter = ISO8601DateFormatter()
-    private let snapshotStampFormatter: ISO8601DateFormatter = {
+    nonisolated(unsafe) private let isoFormatter = ISO8601DateFormatter()
+    nonisolated(unsafe) private let snapshotStampFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate, .withTime]
         return formatter
@@ -34,7 +33,6 @@ final class MemoryDiagnostics: NSObject {
 
     func configure(appState: AppState) {
         self.appState = appState
-        MXMetricManager.shared.add(self)
         recoverPreviousSessionIfNeeded()
         startCrumbTimer()
         observeAppLifecycle()
@@ -116,7 +114,7 @@ final class MemoryDiagnostics: NSObject {
         try? FileManager.default.removeItem(at: url)
     }
 
-    private func appendRaw(_ text: String) {
+    nonisolated private func appendRaw(_ text: String) {
         guard !disabledForSession, let url = logFileURL() else { return }
         do {
             try rotateIfNeeded(at: url)
@@ -134,7 +132,7 @@ final class MemoryDiagnostics: NSObject {
         }
     }
 
-    private func crumbURL() -> URL? {
+    nonisolated private func crumbURL() -> URL? {
         ensureLogDirectory()?.appendingPathComponent("last-session.txt")
     }
 
@@ -193,7 +191,7 @@ final class MemoryDiagnostics: NSObject {
         }
     }
 
-    private func appendLine(_ line: String) {
+    nonisolated private func appendLine(_ line: String) {
         guard !disabledForSession else { return }
         guard let url = logFileURL() else { return }
         do {
@@ -216,7 +214,7 @@ final class MemoryDiagnostics: NSObject {
         }
     }
 
-    private func rotateIfNeeded(at url: URL) throws {
+    nonisolated private func rotateIfNeeded(at url: URL) throws {
         let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
         let size = (attrs?[.size] as? NSNumber)?.intValue ?? 0
         guard size >= Self.maxLogBytes else { return }
@@ -293,26 +291,10 @@ final class MemoryDiagnostics: NSObject {
         for (name, count) in metrics.threadHistogram.sorted(by: { $0.value > $1.value }) {
             out += "  \(name)=\(count)\n"
         }
-        out += "\n"
-        out += "MetricKit Payloads\n"
-        let metricKitFiles = listMetricKitFiles()
-        if metricKitFiles.isEmpty {
-            out += "  (none yet — Apple delivers these ~24h after a crash/hang)\n"
-        } else {
-            for name in metricKitFiles {
-                out += "  \(name)\n"
-            }
-        }
         if periodic {
             out += "\n(periodic)\n"
         }
         return out
-    }
-
-    private func listMetricKitFiles() -> [String] {
-        guard let dir = ensureLogDirectory() else { return [] }
-        let files = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
-        return files.filter { $0.hasPrefix("metrickit-") }.sorted()
     }
 
     private func collectMetrics() -> Metrics {
@@ -375,7 +357,7 @@ final class MemoryDiagnostics: NSObject {
         return "\(short) (\(build))"
     }
 
-    private func ensureLogDirectory() -> URL? {
+    nonisolated private func ensureLogDirectory() -> URL? {
         guard let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else {
             return nil
         }
@@ -389,7 +371,7 @@ final class MemoryDiagnostics: NSObject {
         }
     }
 
-    private func logFileURL() -> URL? {
+    nonisolated private func logFileURL() -> URL? {
         ensureLogDirectory()?.appendingPathComponent("diagnostics.log")
     }
 
@@ -470,47 +452,5 @@ final class MemoryDiagnostics: NSObject {
         let needed = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
         guard needed > 0 else { return 0 }
         return Int(needed) / MemoryLayout<proc_fdinfo>.size
-    }
-}
-
-extension MemoryDiagnostics: @preconcurrency MXMetricManagerSubscriber {
-    nonisolated func didReceive(_ payloads: [MXMetricPayload]) {
-        let datas = payloads.map { $0.jsonRepresentation() }
-        Task { @MainActor in
-            self.persistMetricKitPayloads(datas)
-        }
-    }
-
-    nonisolated func didReceive(_ payloads: [MXDiagnosticPayload]) {
-        let datas = payloads.map { $0.jsonRepresentation() }
-        Task { @MainActor in
-            self.persistMetricKitPayloads(datas)
-        }
-    }
-
-    private func persistMetricKitPayloads(_ payloads: [Data]) {
-        guard let dir = ensureLogDirectory() else { return }
-        let stamp = snapshotStampFormatter.string(from: Date())
-        for (index, data) in payloads.enumerated() {
-            let url = dir.appendingPathComponent("metrickit-\(stamp)-\(index).json")
-            try? data.write(to: url, options: .atomic)
-        }
-        pruneOldMetricKitFiles(in: dir)
-    }
-
-    private func pruneOldMetricKitFiles(in dir: URL) {
-        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        let payloads = files
-            .filter { $0.lastPathComponent.hasPrefix("metrickit-") }
-            .sorted {
-                let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return a > b
-            }
-        let limit = 14
-        guard payloads.count > limit else { return }
-        for file in payloads.dropFirst(limit) {
-            try? FileManager.default.removeItem(at: file)
-        }
     }
 }
