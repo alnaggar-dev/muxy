@@ -52,6 +52,7 @@ final class RichInputDraftStore {
         pendingSave?.cancel()
         pendingSave = nil
         persist()
+        sweepOrphanImages()
     }
 
     private func persist() {

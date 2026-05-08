@@ -811,6 +811,7 @@ struct MainWindow: View {
     private func pruneFileTreeStates() {
         let validKeys = validVCSKeys()
         fileTreeStates = fileTreeStates.filter { validKeys.contains($0.key) }
+        richInputStates = richInputStates.filter { validKeys.contains($0.key) }
     }
 
     private func toggleAttachedVCSPanel() {

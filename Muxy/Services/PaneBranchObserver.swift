@@ -8,8 +8,8 @@ final class PaneBranchObserver {
     private(set) var branch: String?
 
     @ObservationIgnored private var repoPath: String?
-    @ObservationIgnored private var refreshTask: Task<Void, Never>?
-    @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var timer: Timer?
     @ObservationIgnored private let resolver: BranchResolver
     @ObservationIgnored private let refreshInterval: TimeInterval
 
@@ -21,7 +21,7 @@ final class PaneBranchObserver {
         self.resolver = resolver
     }
 
-    isolated deinit {
+    deinit {
         timer?.invalidate()
         refreshTask?.cancel()
     }

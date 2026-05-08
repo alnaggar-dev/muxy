@@ -1013,9 +1013,10 @@ final class GhosttyTerminalNSView: NSView {
 
     func submitRichInput(text: String) {
         guard !text.isEmpty else { return }
+        let sanitized = text.replacingOccurrences(of: "\u{1B}[201~", with: "")
         sendRemoteBytes(
             TerminalControlBytes.bracketedPasteStart
-                + Data(text.utf8)
+                + Data(sanitized.utf8)
                 + TerminalControlBytes.bracketedPasteEnd
         )
     }

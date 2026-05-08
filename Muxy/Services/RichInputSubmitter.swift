@@ -40,6 +40,7 @@ enum RichInputSubmitter {
             view.clearTerminalInput()
             try? await Task.sleep(for: initialDelay)
 
+            var savedClipboard: [NSPasteboardItem]?
             for segment in segments {
                 switch segment {
                 case let .text(chunk):
@@ -47,6 +48,9 @@ enum RichInputSubmitter {
                         view.submitRichInput(text: chunk)
                     }
                 case let .image(url):
+                    if savedClipboard == nil {
+                        savedClipboard = SystemPasteboardSnapshot.capture()
+                    }
                     view.pasteImageURL(url)
                     try? await Task.sleep(for: imagePasteDelay)
                 }
@@ -54,6 +58,11 @@ enum RichInputSubmitter {
 
             if appendReturn {
                 view.sendRemoteBytes(TerminalControlBytes.carriageReturn)
+            }
+
+            if let savedClipboard {
+                try? await Task.sleep(for: imagePasteDelay)
+                SystemPasteboardSnapshot.restore(items: savedClipboard)
             }
 
             view.window?.makeFirstResponder(view)
