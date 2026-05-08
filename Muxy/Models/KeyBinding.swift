@@ -283,7 +283,7 @@ struct KeyBinding: Codable, Identifiable {
         Self(action: .selectProject8, combo: KeyCombo(key: "8", control: true)),
         Self(action: .selectProject9, combo: KeyCombo(key: "9", control: true)),
         Self(action: .findInTerminal, combo: KeyCombo(key: "f", command: true)),
-        Self(action: .toggleRichInput, combo: KeyCombo(key: "g", control: true)),
+        Self(action: .toggleRichInput, combo: KeyCombo(key: "i", command: true)),
         Self(action: .quickOpen, combo: KeyCombo(key: "p", command: true)),
         Self(action: .findInFiles, combo: KeyCombo(key: "f", command: true, shift: true)),
         Self(action: .switchWorktree, combo: KeyCombo(key: "o", command: true, shift: true)),

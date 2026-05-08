@@ -28,7 +28,6 @@ final class GhosttyTerminalNSView: NSView {
     var hasOSC8LinkUnderCursor: Bool = false
     var isFocused: Bool = false
     var overlayActive: Bool = false
-    var richInputVisible: Bool = false
 
     var processExitHandled = false
 
@@ -367,7 +366,7 @@ final class GhosttyTerminalNSView: NSView {
         ghostty_surface_set_focus(surface, false)
     }
 
-    override var acceptsFirstResponder: Bool { !overlayActive && !richInputVisible }
+    override var acceptsFirstResponder: Bool { !overlayActive }
 
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
@@ -409,7 +408,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if richInputVisible || overlayActive { return }
+        if overlayActive { return }
         guard let surface else { super.keyDown(with: event)
             return
         }
@@ -497,7 +496,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func keyUp(with event: NSEvent) {
-        if richInputVisible || overlayActive { return }
+        if overlayActive { return }
         guard let surface else { return }
         var keyEvent = buildKeyEvent(from: event, action: GHOSTTY_ACTION_RELEASE)
         keyEvent.text = nil
@@ -505,7 +504,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func flagsChanged(with event: NSEvent) {
-        if richInputVisible || overlayActive { return }
+        if overlayActive { return }
         guard let surface else { return }
         if hasMarkedText() { return }
         let action: ghostty_input_action_e = isFlagPress(event) ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE
@@ -517,7 +516,7 @@ final class GhosttyTerminalNSView: NSView {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if isAppShortcut(event) { return false }
-        if richInputVisible || overlayActive { return false }
+        if overlayActive { return false }
         guard window?.firstResponder === self || window?.firstResponder === inputContext else { return false }
         guard event.type == .keyDown, let surface else { return false }
 
@@ -545,7 +544,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if richInputVisible || overlayActive { return }
+        if overlayActive { return }
         guard let surface else { return }
         let alreadyFirstResponder = window?.firstResponder === self
         window?.makeFirstResponder(self)
@@ -575,7 +574,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if richInputVisible || overlayActive { return }
+        if overlayActive { return }
         guard let surface else { return }
         let pt = mousePoint(from: event)
         ghostty_surface_mouse_pos(surface, pt.x, pt.y, modsFromEvent(event))
@@ -720,7 +719,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
-        if richInputVisible || overlayActive { return }
+        if overlayActive { return }
         guard let surface else { return }
         let pt = mousePoint(from: event)
         ghostty_surface_mouse_pos(surface, pt.x, pt.y, modsFromEvent(event))
@@ -731,7 +730,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func rightMouseUp(with event: NSEvent) {
-        if richInputVisible || overlayActive { return }
+        if overlayActive { return }
         guard let surface else { return }
         let pt = mousePoint(from: event)
         ghostty_surface_mouse_pos(surface, pt.x, pt.y, modsFromEvent(event))
@@ -1012,33 +1011,22 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     func submitRichInput(text: String, strategy: RichInputSubmitStrategy) {
+        guard !text.isEmpty else { return }
         let textBytes = Data(text.utf8)
-        let returnByte = Data([0x0D])
         switch strategy {
         case .inline:
-            sendRemoteBytes(textBytes + returnByte)
+            sendRemoteBytes(textBytes)
         case .bracketedPaste:
             sendRemoteBytes(
                 RichInputSubmitStrategy.bracketedPasteStart
                     + textBytes
                     + RichInputSubmitStrategy.bracketedPasteEnd
             )
-            sendRemoteBytes(returnByte)
-        case .delayedEnter:
-            sendRemoteBytes(textBytes)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                self?.sendRemoteBytes(returnByte)
-            }
-        case .bracketedPasteDelayedEnter:
-            sendRemoteBytes(
-                RichInputSubmitStrategy.bracketedPasteStart
-                    + textBytes
-                    + RichInputSubmitStrategy.bracketedPasteEnd
-            )
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.sendRemoteBytes(returnByte)
-            }
         }
+    }
+
+    func clearTerminalInput() {
+        sendRemoteBytes(Data([0x15]))
     }
 
     func pasteImageURL(_ url: URL) {

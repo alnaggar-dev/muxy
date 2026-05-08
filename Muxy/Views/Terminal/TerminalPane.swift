@@ -17,41 +17,17 @@ struct TerminalPane: View {
         if case let .remote(_, name) = ownership.owner(for: state.id) { name } else { nil }
     }
 
-    private var shouldShowRichInput: Bool {
-        state.richInput.isVisible && remoteOwnerName == nil && !overlayActive
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            terminalLayer
-
-            if shouldShowRichInput {
-                RichInputBar(
-                    state: state.richInput,
-                    paneID: state.id,
-                    onDismiss: { dismissRichInput() },
-                    onSubmit: { RichInputSubmitter.submit(state: state) }
-                )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+        terminalLayer
+            .onAppear { state.branchObserver.start() }
+            .onDisappear { state.branchObserver.stop() }
+            .onReceive(NotificationCenter.default.publisher(for: .refocusActiveTerminal)) { _ in
+                guard focused, visible else { return }
+                let view = TerminalViewRegistry.shared.existingView(for: state.id)
+                DispatchQueue.main.async {
+                    view?.window?.makeFirstResponder(view)
+                }
             }
-
-            TerminalPaneFooter(
-                state: state,
-                branchObserver: state.branchObserver,
-                paneID: state.id,
-                isInteractive: remoteOwnerName == nil && !overlayActive
-            )
-        }
-        .animation(.easeInOut(duration: 0.2), value: shouldShowRichInput)
-        .onAppear { state.branchObserver.start() }
-        .onDisappear { state.branchObserver.stop() }
-        .onReceive(NotificationCenter.default.publisher(for: .refocusActiveTerminal)) { _ in
-            guard focused, visible else { return }
-            let view = TerminalViewRegistry.shared.existingView(for: state.id)
-            DispatchQueue.main.async {
-                view?.window?.makeFirstResponder(view)
-            }
-        }
     }
 
     private var terminalLayer: some View {
@@ -60,7 +36,6 @@ struct TerminalPane: View {
                 state: state,
                 focused: focused,
                 visible: visible,
-                richInputVisible: state.richInput.isVisible,
                 areaID: areaID,
                 onFocus: onFocus,
                 onProcessExit: onProcessExit,
@@ -100,17 +75,6 @@ struct TerminalPane: View {
                 )
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
-        }
-    }
-
-    private func dismissRichInput() {
-        let view = TerminalViewRegistry.shared.existingView(for: state.id)
-        if state.richInput.detectedAgentName != nil {
-            state.richInput.userDismissedDuringAgentRun = true
-        }
-        state.richInput.isVisible = false
-        DispatchQueue.main.async {
-            view?.window?.makeFirstResponder(view)
         }
     }
 }
@@ -156,7 +120,6 @@ struct TerminalBridge: NSViewRepresentable {
     let state: TerminalPaneState
     let focused: Bool
     let visible: Bool
-    let richInputVisible: Bool
     let areaID: UUID
     let onFocus: () -> Void
     let onProcessExit: () -> Void
@@ -167,7 +130,6 @@ struct TerminalBridge: NSViewRepresentable {
     final class Coordinator {
         var wasFocused = false
         var wasOverlayActive = false
-        var wasRichInputVisible = false
     }
 
     func makeCoordinator() -> Coordinator {
@@ -187,7 +149,6 @@ struct TerminalBridge: NSViewRepresentable {
         }
         view.isFocused = focused
         view.overlayActive = overlayActive
-        view.richInputVisible = richInputVisible
         view.setVisible(visible)
         view.onFocus = onFocus
         view.onProcessExit = onProcessExit
@@ -207,11 +168,7 @@ struct TerminalBridge: NSViewRepresentable {
         configureFileOpenCallback(view)
         configureProgressCallback(view)
         context.coordinator.wasFocused = focused
-        context.coordinator.wasRichInputVisible = richInputVisible
-        if focused {
-            startCLIAgentDetector()
-        }
-        if focused, !overlayActive, !richInputVisible {
+        if focused, !overlayActive {
             view.notifySurfaceFocused()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 view.window?.makeFirstResponder(view)
@@ -230,7 +187,6 @@ struct TerminalBridge: NSViewRepresentable {
             nsView.envVars = Self.buildEnvVars(paneID: state.id, worktreeKey: key)
         }
         nsView.overlayActive = overlayActive
-        nsView.richInputVisible = richInputVisible
         nsView.setVisible(visible)
         nsView.onFocus = onFocus
         nsView.onProcessExit = onProcessExit
@@ -251,15 +207,8 @@ struct TerminalBridge: NSViewRepresentable {
         configureProgressCallback(nsView)
         let wasFocused = context.coordinator.wasFocused
         let wasOverlayActive = context.coordinator.wasOverlayActive
-        let wasRichInputVisible = context.coordinator.wasRichInputVisible
-        if focused, !wasFocused {
-            startCLIAgentDetector()
-        } else if !focused, wasFocused {
-            CLIAgentDetector.shared.stop(paneID: state.id)
-        }
         context.coordinator.wasFocused = focused
         context.coordinator.wasOverlayActive = overlayActive
-        context.coordinator.wasRichInputVisible = richInputVisible
         nsView.isFocused = focused
 
         if overlayActive {
@@ -269,14 +218,7 @@ struct TerminalBridge: NSViewRepresentable {
             if !wasOverlayActive {
                 nsView.notifySurfaceUnfocused()
             }
-        } else if richInputVisible {
-            if nsView.window?.firstResponder === nsView || nsView.window?.firstResponder === nsView.inputContext {
-                nsView.window?.makeFirstResponder(nil)
-            }
-            if !wasRichInputVisible {
-                nsView.notifySurfaceUnfocused()
-            }
-        } else if focused, !wasFocused || wasOverlayActive || wasRichInputVisible {
+        } else if focused, !wasFocused || wasOverlayActive {
             nsView.notifySurfaceFocused()
             DispatchQueue.main.async {
                 nsView.window?.makeFirstResponder(nsView)
@@ -297,28 +239,6 @@ struct TerminalBridge: NSViewRepresentable {
                 ]
             )
         }
-    }
-
-    private func startCLIAgentDetector() {
-        let richInput = state.richInput
-        CLIAgentDetector.shared.start(
-            paneID: state.id,
-            onAgentDetected: { name, previous in
-                richInput.detectedAgentName = name
-                guard previous == nil else {
-                    richInput.userDismissedDuringAgentRun = false
-                    return
-                }
-                let autoOpen = UserDefaults.standard.bool(forKey: RichInputPreferences.autoDetectKey)
-                if autoOpen, !richInput.userDismissedDuringAgentRun {
-                    richInput.isVisible = true
-                }
-            },
-            onAgentExited: {
-                richInput.detectedAgentName = nil
-                richInput.userDismissedDuringAgentRun = false
-            }
-        )
     }
 
     private static func buildEnvVars(paneID: UUID, worktreeKey key: WorktreeKey) -> [(key: String, value: String)] {

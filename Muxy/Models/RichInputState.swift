@@ -3,10 +3,22 @@ import Foundation
 @MainActor
 @Observable
 final class RichInputState {
-    var isVisible: Bool = false
     var text: String = ""
-    var attachments: [URL] = []
+    var fileAttachments: [URL] = []
+    var imageAttachments: [URL] = []
+    var imagePlaceholderCounter: Int = 0
     var focusVersion: Int = 0
-    var userDismissedDuringAgentRun: Bool = false
-    var detectedAgentName: String?
+
+    func nextImagePlaceholder(for url: URL) -> String {
+        imagePlaceholderCounter += 1
+        imageAttachments.append(url)
+        return "[Image \(imagePlaceholderCounter)]"
+    }
+
+    func reset() {
+        text = ""
+        fileAttachments = []
+        imageAttachments = []
+        imagePlaceholderCounter = 0
+    }
 }

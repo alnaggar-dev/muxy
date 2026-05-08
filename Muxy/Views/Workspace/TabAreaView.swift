@@ -137,28 +137,6 @@ struct TabAreaView: View {
             guard let pane = tab.content.pane else { return }
             TerminalViewRegistry.shared.existingView(for: pane.id)?.startSearch()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleRichInput)) { _ in
-            guard isFocused, isActiveProject else { return }
-            guard let tabID = area.activeTabID,
-                  let tab = area.tabs.first(where: { $0.id == tabID })
-            else { return }
-            guard let pane = tab.content.pane else { return }
-            guard PaneOwnershipStore.shared.isOwnedByMac(pane.id) else { return }
-            let willOpen = !pane.richInput.isVisible
-            pane.richInput.isVisible = willOpen
-            if willOpen {
-                pane.richInput.focusVersion += 1
-                pane.richInput.userDismissedDuringAgentRun = false
-                return
-            }
-            if pane.richInput.detectedAgentName != nil {
-                pane.richInput.userDismissedDuringAgentRun = true
-            }
-            let view = TerminalViewRegistry.shared.existingView(for: pane.id)
-            DispatchQueue.main.async {
-                view?.window?.makeFirstResponder(view)
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .saveActiveEditor)) { _ in
             guard isFocused, isActiveProject else { return }
             guard let tabID = area.activeTabID,

@@ -14,8 +14,6 @@ struct GeneralSettingsView: View {
     private var updateChannelRaw = UpdateChannel.stable.rawValue
     @AppStorage(QuitConfirmationPreferences.confirmQuitKey)
     private var confirmQuit = true
-    @AppStorage(RichInputPreferences.autoDetectKey)
-    private var richInputAutoDetect = false
 
     var body: some View {
         SettingsContainer {
@@ -68,17 +66,6 @@ struct GeneralSettingsView: View {
                 SettingsToggleRow(
                     label: "Confirm before closing a tab with a running process",
                     isOn: $confirmRunningProcess
-                )
-            }
-
-            SettingsSection(
-                "Rich Input",
-                footer: "Automatically open the rich input strip when a supported CLI agent "
-                    + "(claude, codex, gemini, …) is the foreground process in a focused terminal."
-            ) {
-                SettingsToggleRow(
-                    label: "Auto-show for CLI agents",
-                    isOn: $richInputAutoDetect
                 )
             }
 
