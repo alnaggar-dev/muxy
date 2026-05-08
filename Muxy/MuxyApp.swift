@@ -335,6 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated {
             MobileServerService.shared.stopForTermination()
         }
+        RichInputTempFiles.cleanupAll()
     }
 
     @MainActor

@@ -40,6 +40,7 @@ final class TerminalViewRegistry {
         guard let view = views.removeValue(forKey: paneID) else { return }
         paneIDs.removeValue(forKey: ObjectIdentifier(view))
         view.tearDown()
+        CLIAgentDetector.shared.stop(paneID: paneID)
     }
 
     func needsConfirmQuit(for paneID: UUID) -> Bool {
