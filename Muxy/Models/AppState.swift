@@ -49,6 +49,8 @@ final class AppState {
         case focusPaneRight(projectID: UUID)
         case focusPaneUp(projectID: UUID)
         case focusPaneDown(projectID: UUID)
+        case cycleNextTabAcrossPanes(projectID: UUID)
+        case cyclePreviousTabAcrossPanes(projectID: UUID)
         case moveTab(projectID: UUID, request: TabMoveRequest)
         case selectNextProject(projects: [Project], worktrees: [UUID: [Worktree]])
         case selectPreviousProject(projects: [Project], worktrees: [UUID: [Worktree]])
@@ -263,6 +265,38 @@ final class AppState {
                 }
             }
         }
+    }
+
+    func openMarkdownLinkTarget(_ filePath: String, projectID: UUID, fragment: String?) {
+        for area in allAreas(for: projectID) {
+            if let tab = area.tabs.first(where: { $0.content.editorState?.filePath == filePath }) {
+                dispatch(.selectTab(projectID: projectID, areaID: area.id, tabID: tab.id))
+                if let editorState = tab.content.editorState {
+                    prepareMarkdownLinkTarget(editorState, fragment: fragment)
+                }
+                return
+            }
+        }
+
+        dispatch(.createEditorTab(projectID: projectID, areaID: nil, filePath: filePath, suppressInitialFocus: false))
+        if let editorState = editorState(for: filePath, projectID: projectID) {
+            prepareMarkdownLinkTarget(editorState, fragment: fragment)
+        }
+    }
+
+    private func editorState(for filePath: String, projectID: UUID) -> EditorTabState? {
+        for area in allAreas(for: projectID) {
+            if let editorState = area.tabs.compactMap(\.content.editorState).first(where: { $0.filePath == filePath }) {
+                return editorState
+            }
+        }
+        return nil
+    }
+
+    private func prepareMarkdownLinkTarget(_ editorState: EditorTabState, fragment: String?) {
+        guard editorState.isMarkdownFile else { return }
+        editorState.markdownViewMode = .preview
+        editorState.requestMarkdownFragment(fragment)
     }
 
     private func requestEditorJump(state: EditorTabState, line: Int, column: Int) {
@@ -569,10 +603,22 @@ final class AppState {
 
         for paneID in effects.paneIDsToRemove {
             terminalViews.removeView(for: paneID)
+            TerminalProgressStore.shared.resetPane(paneID)
         }
 
         if !effects.projectIDsToRemove.isEmpty {
             onProjectsEmptied?(effects.projectIDsToRemove)
+        }
+
+        for collapse in effects.deferredAreaCollapses {
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      let root = self.workspaceRoots[collapse.key],
+                      let area = root.findArea(id: collapse.areaID),
+                      area.tabs.isEmpty
+                else { return }
+                self.dispatch(.closeArea(projectID: collapse.key.projectID, areaID: collapse.areaID))
+            }
         }
 
         pruneNavigationHistory()
@@ -580,6 +626,10 @@ final class AppState {
 
         if let activeTabID = NotificationNavigator.activeTabID(appState: self) {
             NotificationStore.shared.markAsRead(tabID: activeTabID)
+        }
+
+        if let activePaneID = NotificationNavigator.activePaneID(appState: self) {
+            TerminalProgressStore.shared.clearCompletion(for: activePaneID)
         }
 
         saveWorkspaces()
@@ -722,6 +772,14 @@ final class AppState {
 
     func focusPaneDown(projectID: UUID) {
         dispatch(.focusPaneDown(projectID: projectID))
+    }
+
+    func cycleNextTabAcrossPanes(projectID: UUID) {
+        dispatch(.cycleNextTabAcrossPanes(projectID: projectID))
+    }
+
+    func cyclePreviousTabAcrossPanes(projectID: UUID) {
+        dispatch(.cyclePreviousTabAcrossPanes(projectID: projectID))
     }
 
     func selectProjectByIndex(_ index: Int, projects: [Project], worktrees: [UUID: [Worktree]]) {

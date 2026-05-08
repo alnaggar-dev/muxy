@@ -12,8 +12,14 @@ struct WorkspaceState {
 
 @MainActor
 struct WorkspaceSideEffects {
+    struct DeferredAreaCollapse {
+        let key: WorktreeKey
+        let areaID: UUID
+    }
+
     var paneIDsToRemove: [UUID] = []
     var projectIDsToRemove: [UUID] = []
+    var deferredAreaCollapses: [DeferredAreaCollapse] = []
 }
 
 @MainActor
@@ -161,6 +167,12 @@ enum WorkspaceReducer {
 
         case let .focusPaneDown(projectID):
             FocusReducer.focusPane(projectID: projectID, direction: .down, state: &state)
+
+        case let .cycleNextTabAcrossPanes(projectID):
+            FocusReducer.cycleTabAcrossPanes(projectID: projectID, forward: true, state: &state)
+
+        case let .cyclePreviousTabAcrossPanes(projectID):
+            FocusReducer.cycleTabAcrossPanes(projectID: projectID, forward: false, state: &state)
 
         case let .applyLayout(projectID, worktreePath, config):
             applyLayout(

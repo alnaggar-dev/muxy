@@ -4,7 +4,6 @@ struct VCSWindowView: View {
     @Environment(AppState.self) private var appState
     @Environment(ProjectStore.self) private var projectStore
     @Environment(WorktreeStore.self) private var worktreeStore
-    @State private var vcsStates: [WorktreeKey: VCSTabState] = [:]
     @State private var activeState: VCSTabState?
 
     private var activeProject: Project? {
@@ -18,7 +17,7 @@ struct VCSWindowView: View {
                 VCSTabView(state: state, focused: true, onFocus: {})
             } else {
                 Text("No project selected")
-                    .font(.system(size: 13))
+                    .font(.system(size: UIMetrics.fontEmphasis))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -43,11 +42,6 @@ struct VCSWindowView: View {
     }
 
     private func synchronizeState() {
-        vcsStates = vcsStates.filter { entry in
-            worktreeStore.list(for: entry.key.projectID)
-                .contains(where: { $0.id == entry.key.worktreeID })
-        }
-
         guard let project = activeProject,
               let key = appState.activeWorktreeKey(for: project.id)
         else {
@@ -55,16 +49,9 @@ struct VCSWindowView: View {
             return
         }
 
-        if let existing = vcsStates[key] {
-            activeState = existing
-            return
-        }
-
         let worktreePath = worktreeStore
             .worktree(projectID: project.id, worktreeID: key.worktreeID)?
             .path ?? project.path
-        let state = VCSTabState(projectPath: worktreePath)
-        vcsStates[key] = state
-        activeState = state
+        activeState = VCSStateStore.shared.state(for: worktreePath)
     }
 }
