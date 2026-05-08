@@ -4,14 +4,12 @@ import UniformTypeIdentifiers
 
 struct RichInputSidePanel: View {
     @Bindable var state: RichInputState
+    let worktreeKey: WorktreeKey
     let onDismiss: () -> Void
     let onSubmit: (_ appendReturn: Bool) -> Void
 
     @AppStorage(RichInputPreferences.fontSizeKey) private var fontSize: Double = RichInputPreferences.defaultFontSize
     @State private var keyMonitor: Any?
-
-    private var submitShortcutLabel: String { "⌘↩" }
-    private var submitNoEnterShortcutLabel: String { "⌘⇧↩" }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,7 +41,17 @@ struct RichInputSidePanel: View {
             handleDrop(providers: providers)
         }
         .onAppear { installSubmitMonitor() }
-        .onDisappear { removeSubmitMonitor() }
+        .onDisappear {
+            removeSubmitMonitor()
+            RichInputDraftStore.shared.flush()
+        }
+        .onChange(of: state.text) { persistDraft() }
+        .onChange(of: state.fileAttachments) { persistDraft() }
+        .onChange(of: state.imageAttachments) { persistDraft() }
+    }
+
+    private func persistDraft() {
+        RichInputDraftStore.shared.scheduleSave(state.draft, for: worktreeKey)
     }
 
     private var editorConfiguration: MarkdownTextEditor.Configuration {
@@ -59,7 +67,7 @@ struct RichInputSidePanel: View {
         MarkdownTextEditor.Callbacks(
             onSubmit: { onSubmit(true) },
             onPasteImageData: { data in
-                guard let url = RichInputTempFiles.write(imageData: data) else { return }
+                guard let url = RichInputImageStorage.write(imageData: data) else { return }
                 insertImagePlaceholder(for: url)
             },
             onPasteFileURL: { url in
@@ -133,7 +141,7 @@ struct RichInputSidePanel: View {
             }
             if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                 provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
-                    guard let data, let url = RichInputTempFiles.write(imageData: data) else { return }
+                    guard let data, let url = RichInputImageStorage.write(imageData: data) else { return }
                     Task { @MainActor in
                         insertImagePlaceholder(for: url)
                     }
@@ -148,16 +156,16 @@ struct RichInputSidePanel: View {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
             guard NSApp.keyWindow?.firstResponder is MarkdownEditingTextView else { return event }
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let isReturnKey = event.keyCode == 36 || event.keyCode == 76
-            if isReturnKey, flags == .command {
+            let store = KeyBindingStore.shared
+            if store.combo(for: .submitRichInput).matches(event: event) {
                 Task { @MainActor in onSubmit(true) }
                 return nil
             }
-            if isReturnKey, flags == [.command, .shift] {
+            if store.combo(for: .submitRichInputWithoutReturn).matches(event: event) {
                 Task { @MainActor in onSubmit(false) }
                 return nil
             }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             guard flags.subtracting(.shift) == .command else { return event }
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "=",

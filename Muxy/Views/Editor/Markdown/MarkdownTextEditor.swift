@@ -218,13 +218,6 @@ struct MarkdownTextEditor: NSViewRepresentable {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             return trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~")
         }
-
-        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                return false
-            }
-            return false
-        }
     }
 }
 

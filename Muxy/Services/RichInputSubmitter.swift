@@ -29,14 +29,13 @@ enum RichInputSubmitter {
             combined = pathParts.joined(separator: " ") + " " + body
         }
 
-        let segments = tokenize(text: combined, images: imageAttachments)
-        let strategy = RichInputSubmitStrategy.default
+        let segments = resolveSegments(
+            text: combined,
+            images: imageAttachments,
+            strategy: EditorSettings.shared.richInputImageStrategy
+        )
 
         Task { @MainActor in
-            let cleanupURLs = (imageAttachments + fileAttachments).filter {
-                $0.path.hasPrefix(RichInputTempFiles.directoryURL().path)
-            }
-
             guard let view = TerminalViewRegistry.shared.existingView(for: paneID) else { return }
             view.clearTerminalInput()
             try? await Task.sleep(for: initialDelay)
@@ -45,7 +44,7 @@ enum RichInputSubmitter {
                 switch segment {
                 case let .text(chunk):
                     if !chunk.isEmpty {
-                        view.submitRichInput(text: chunk, strategy: strategy)
+                        view.submitRichInput(text: chunk)
                     }
                 case let .image(url):
                     view.pasteImageURL(url)
@@ -54,14 +53,24 @@ enum RichInputSubmitter {
             }
 
             if appendReturn {
-                view.sendRemoteBytes(Data([0x0D]))
+                view.sendRemoteBytes(TerminalControlBytes.carriageReturn)
             }
 
-            richInput.reset()
             view.window?.makeFirstResponder(view)
+        }
+    }
 
-            for url in cleanupURLs {
-                try? FileManager.default.removeItem(at: url)
+    nonisolated static func resolveSegments(
+        text: String,
+        images: [URL],
+        strategy: RichInputImageStrategy
+    ) -> [Segment] {
+        let raw = tokenize(text: text, images: images)
+        guard strategy == .inlinePath else { return raw }
+        return raw.map { segment in
+            switch segment {
+            case .text: segment
+            case let .image(url): .text(ShellEscaper.escape(url.path))
             }
         }
     }

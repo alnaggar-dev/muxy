@@ -1,12 +1,9 @@
 import Foundation
 
-enum RichInputTempFiles {
-    static let directoryName = "Muxy/RichInput"
-
+enum RichInputImageStorage {
     static func directoryURL() -> URL {
-        URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("Muxy", isDirectory: true)
-            .appendingPathComponent("RichInput", isDirectory: true)
+        MuxyFileStorage.appSupportDirectory()
+            .appendingPathComponent("RichInputImages", isDirectory: true)
     }
 
     static func write(imageData: Data) -> URL? {
@@ -26,9 +23,16 @@ enum RichInputTempFiles {
         return url
     }
 
-    static func cleanupAll() {
+    static func removeOrphans(referencedFilenames: Set<String>) {
         let dir = directoryURL()
-        try? FileManager.default.removeItem(at: dir)
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: nil
+        )
+        else { return }
+        for url in entries where !referencedFilenames.contains(url.lastPathComponent) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 }
 

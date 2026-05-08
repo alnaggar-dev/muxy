@@ -686,7 +686,10 @@ struct MainWindow: View {
 
     @ViewBuilder
     private var rightSidePanel: some View {
-        if richInputPanelVisible, let richInputState = activeRichInputState {
+        if richInputPanelVisible,
+           let richInputState = activeRichInputState,
+           let worktreeKey = activeWorktreeKey
+        {
             HStack(spacing: 0) {
                 sidePanelResizeHandle { delta in
                     let next = richInputPanelWidth - Double(delta)
@@ -697,6 +700,7 @@ struct MainWindow: View {
                 }
                 RichInputSidePanel(
                     state: richInputState,
+                    worktreeKey: worktreeKey,
                     onDismiss: { closeRichInputPanel() },
                     onSubmit: { appendReturn in submitRichInput(richInputState, appendReturn: appendReturn) }
                 )
@@ -851,6 +855,9 @@ struct MainWindow: View {
         else { return nil }
         if let existing = richInputStates[key] { return existing }
         let new = RichInputState()
+        if let draft = RichInputDraftStore.shared.draft(for: key) {
+            new.apply(draft)
+        }
         richInputStates[key] = new
         return new
     }

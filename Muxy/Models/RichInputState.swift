@@ -15,10 +15,19 @@ final class RichInputState {
         return "[Image \(imagePlaceholderCounter)]"
     }
 
-    func reset() {
-        text = ""
-        fileAttachments = []
-        imageAttachments = []
-        imagePlaceholderCounter = 0
+    func apply(_ draft: RichInputDraft) {
+        text = draft.text
+        fileAttachments = draft.fileAttachments
+        imageAttachments = draft.imageAttachments
+        imagePlaceholderCounter = draft.imagePlaceholderCounter
+    }
+
+    var draft: RichInputDraft {
+        RichInputDraft(
+            text: text,
+            fileAttachments: fileAttachments,
+            imageAttachments: imageAttachments,
+            imagePlaceholderCounter: imagePlaceholderCounter
+        )
     }
 }

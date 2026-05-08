@@ -1003,30 +1003,17 @@ final class GhosttyTerminalNSView: NSView {
         }
     }
 
-    var foregroundProcessPID: pid_t? {
-        guard let surface else { return nil }
-        let raw = ghostty_surface_foreground_pid(surface)
-        guard raw != 0 else { return nil }
-        return pid_t(exactly: raw)
-    }
-
-    func submitRichInput(text: String, strategy: RichInputSubmitStrategy) {
+    func submitRichInput(text: String) {
         guard !text.isEmpty else { return }
-        let textBytes = Data(text.utf8)
-        switch strategy {
-        case .inline:
-            sendRemoteBytes(textBytes)
-        case .bracketedPaste:
-            sendRemoteBytes(
-                RichInputSubmitStrategy.bracketedPasteStart
-                    + textBytes
-                    + RichInputSubmitStrategy.bracketedPasteEnd
-            )
-        }
+        sendRemoteBytes(
+            TerminalControlBytes.bracketedPasteStart
+                + Data(text.utf8)
+                + TerminalControlBytes.bracketedPasteEnd
+        )
     }
 
     func clearTerminalInput() {
-        sendRemoteBytes(Data([0x15]))
+        sendRemoteBytes(TerminalControlBytes.killLineToCursor)
     }
 
     func pasteImageURL(_ url: URL) {
@@ -1061,7 +1048,7 @@ final class GhosttyTerminalNSView: NSView {
         }
         guard let data else { return }
         pasteboard.setData(data, forType: pasteboardType)
-        sendRemoteBytes(Data([0x16]))
+        sendRemoteBytes(TerminalControlBytes.pasteShortcut)
     }
 
     func sendKeyPress(codepoint: UInt32, keycode: UInt32 = 0, mods: ghostty_input_mods_e = GHOSTTY_MODS_NONE) {

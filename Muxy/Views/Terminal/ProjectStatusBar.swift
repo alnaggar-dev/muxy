@@ -121,12 +121,15 @@ struct ProjectStatusBar: View {
     }
 
     private var shortcutHints: some View {
-        HStack(spacing: 10) {
-            shortcutHint(keys: "⌘↩", label: "Send")
-            shortcutHint(keys: "⌘⇧↩", label: "Send w/o ↩")
+        let store = KeyBindingStore.shared
+        let submit = store.combo(for: .submitRichInput).displayString
+        let submitNoReturn = store.combo(for: .submitRichInputWithoutReturn).displayString
+        return HStack(spacing: 10) {
+            shortcutHint(keys: submit, label: "Send")
+            shortcutHint(keys: submitNoReturn, label: "Send w/o ↩")
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("⌘↩ Send. ⌘⇧↩ Send without Enter.")
+        .accessibilityLabel("\(submit) Send. \(submitNoReturn) Send without Enter.")
     }
 
     private func shortcutHint(keys: String, label: String) -> some View {

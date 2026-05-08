@@ -342,8 +342,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationSocketServer.shared.stop()
         MainActor.assumeIsolated {
             MobileServerService.shared.stopForTermination()
+            RichInputDraftStore.shared.flush()
         }
-        RichInputTempFiles.cleanupAll()
     }
 
     @MainActor
