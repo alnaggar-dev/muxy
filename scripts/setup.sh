@@ -122,5 +122,7 @@ if [[ "$NEEDS_RESOURCES_DOWNLOAD" == "true" ]]; then
     rm GhosttyKit-resources.tar.gz
 fi
 
+rm -rf "$RESOURCES_DIR/themes"
+
 echo "==> Done"
 echo "    Run 'swift build' to build the project"

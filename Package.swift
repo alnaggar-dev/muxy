@@ -41,12 +41,20 @@ let package = Package(
                 .product(name: "Yams", package: "Yams"),
             ],
             path: "Muxy",
-            exclude: ["Info.plist", "Muxy.entitlements", "Resources/ghostty", "Resources/terminfo", "Resources/rg"],
+            exclude: [
+                "Info.plist",
+                "Muxy.entitlements",
+                "Resources/ghostty",
+                "Resources/terminfo",
+                "Resources/rg",
+                "Resources/themes",
+            ],
             resources: [
                 .process("Resources"),
                 .copy("Resources/ghostty"),
                 .copy("Resources/terminfo"),
                 .copy("Resources/rg"),
+                .copy("Resources/themes"),
             ],
             linkerSettings: [
                 .unsafeFlags([
