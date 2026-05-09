@@ -71,6 +71,7 @@ final class CLIAgentDetector {
     }
 
     private var subscriptions: [UUID: Subscription] = [:]
+    private var preservedAgentNames: [UUID: String] = [:]
 
     private init() {}
 
@@ -79,12 +80,13 @@ final class CLIAgentDetector {
         onAgentDetected: @escaping (_ name: String, _ previous: String?) -> Void,
         onAgentExited: @escaping () -> Void
     ) {
-        stop(paneID: paneID)
+        stop(paneID: paneID, preserveAgentState: true)
         let subscription = Subscription(
             paneID: paneID,
             onAgentDetected: onAgentDetected,
             onAgentExited: onAgentExited
         )
+        subscription.lastAgentName = preservedAgentNames[paneID]
         subscriptions[paneID] = subscription
         tick(subscription: subscription)
         let timer = Timer.scheduledTimer(
@@ -100,10 +102,26 @@ final class CLIAgentDetector {
         subscription.timer = timer
     }
 
-    func stop(paneID: UUID) {
+    func stop(paneID: UUID, preserveAgentState: Bool = true) {
         guard let subscription = subscriptions.removeValue(forKey: paneID) else { return }
         subscription.timer?.invalidate()
         subscription.timer = nil
+        if preserveAgentState {
+            if let agentName = subscription.lastAgentName {
+                preservedAgentNames[paneID] = agentName
+            } else {
+                preservedAgentNames.removeValue(forKey: paneID)
+            }
+        } else {
+            preservedAgentNames.removeValue(forKey: paneID)
+        }
+    }
+
+    func stopAndClear(paneID: UUID) -> Bool {
+        let lastAgentName = subscriptions[paneID]?.lastAgentName ?? preservedAgentNames[paneID]
+        stop(paneID: paneID, preserveAgentState: false)
+        preservedAgentNames.removeValue(forKey: paneID)
+        return lastAgentName != nil
     }
 
     private func tick(subscription: Subscription) {
@@ -114,6 +132,11 @@ final class CLIAgentDetector {
         }
         let previous = subscription.lastAgentName
         subscription.lastAgentName = candidate
+        if let candidate {
+            preservedAgentNames[subscription.paneID] = candidate
+        } else {
+            preservedAgentNames.removeValue(forKey: subscription.paneID)
+        }
         guard previous != candidate else { return }
         if let candidate {
             logger.debug("CLIAgentDetector: pane=\(subscription.paneID) detected=\(candidate) previous=\(previous ?? "nil")")
@@ -186,7 +209,7 @@ final class CLIAgentDetector {
                 return match
             }
         }
-        logger.debug("CLIAgentDetector: pid \(pid) imageName=\(imageName) argv=\(argv.joined(separator: " ")) — no agent match")
+        logger.debug("CLIAgentDetector: pid \(pid) imageName=\(imageName) argc=\(argv.count) no agent match")
         return nil
     }
 

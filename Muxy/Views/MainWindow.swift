@@ -692,6 +692,7 @@ struct MainWindow: View {
                 RichInputSidePanel(
                     state: richInputState,
                     worktreeKey: worktreeKey,
+                    paneID: activeRichInputPaneID,
                     onDismiss: { closeRichInputPanel() },
                     onSubmit: { appendReturn in submitRichInput(richInputState, appendReturn: appendReturn) }
                 )
@@ -780,6 +781,7 @@ struct MainWindow: View {
             RichInputBar(
                 state: richInputState,
                 worktreeKey: worktreeKey,
+                paneID: activeRichInputPaneID,
                 onDismiss: { closeRichInputPanel() },
                 onSubmit: { appendReturn in submitRichInput(richInputState, appendReturn: appendReturn) }
             )
@@ -899,6 +901,10 @@ struct MainWindow: View {
         guard let project = activeProject,
               let key = appState.activeWorktreeKey(for: project.id)
         else { return nil }
+        return richInputState(for: key)
+    }
+
+    private func richInputState(for key: WorktreeKey) -> RichInputState {
         if let existing = richInputStates[key] { return existing }
         let new = RichInputState()
         if let draft = RichInputDraftStore.shared.draft(for: key) {
@@ -936,10 +942,10 @@ struct MainWindow: View {
     private func closeRichInputPanel() {
         if richInputPanelVisible,
            let richInputState = activeRichInputState,
-           richInputState.detectedAgentName != nil,
-           let paneID = activeRichInputPaneID
+           let paneID = activeRichInputPaneID,
+           richInputState.detectedAgentName(for: paneID) != nil
         {
-            richInputState.dismissedAgentPaneID = paneID
+            richInputState.markAgentPaneDismissed(paneID)
         }
         richInputPanelVisible = false
         guard let paneID = activeRichInputPaneID,
@@ -956,7 +962,8 @@ struct MainWindow: View {
             richInput: richInput,
             paneID: paneID,
             appendReturn: appendReturn,
-            clearAfterSend: richInputClearAfterSend
+            clearAfterSend: richInputClearAfterSend,
+            focusRichInputAfterSend: richInputExclusiveFocusLockActive
         )
     }
 
@@ -971,7 +978,8 @@ struct MainWindow: View {
 
     private func handleCLIAgentDetected(note: Notification) {
         guard let paneID = note.userInfo?[CLIAgentNotificationKey.paneID] as? UUID,
-              let agentName = note.userInfo?[CLIAgentNotificationKey.agentName] as? String
+              let agentName = note.userInfo?[CLIAgentNotificationKey.agentName] as? String,
+              let worktreeKey = worktreeKey(from: note, paneID: paneID)
         else { return }
         let previous = note.userInfo?[CLIAgentNotificationKey.previousAgentName] as? String
         let activePaneDesc = activeRichInputPaneID?.uuidString ?? "nil"
@@ -984,30 +992,33 @@ struct MainWindow: View {
             panelVisible=\(self.richInputPanelVisible)
             """
         )
-        guard paneID == activeRichInputPaneID,
-              let richInputState = activeRichInputState
-        else { return }
-        richInputState.detectedAgentName = agentName
-        if richInputState.dismissedAgentPaneID != paneID {
-            richInputState.dismissedAgentPaneID = nil
+        let richInputState = richInputState(for: worktreeKey)
+        richInputState.setDetectedAgentName(agentName, for: paneID)
+        if let previous, previous != agentName {
+            richInputState.clearAgentPaneDismissal(paneID)
         }
-        guard previous == nil else { return }
+        guard paneID == activeRichInputPaneID else { return }
         guard richInputAutoDetect,
               richInputLayout == .horizontal,
-              richInputState.dismissedAgentPaneID != paneID
+              !richInputState.isAgentPaneDismissed(paneID)
         else { return }
         handleRequestShowRichInput()
     }
 
     private func handleCLIAgentExited(note: Notification) {
         guard let paneID = note.userInfo?[CLIAgentNotificationKey.paneID] as? UUID,
-              paneID == activeRichInputPaneID,
-              let richInputState = activeRichInputState
+              let worktreeKey = worktreeKey(from: note, paneID: paneID)
         else { return }
-        richInputState.detectedAgentName = nil
-        if richInputState.dismissedAgentPaneID == paneID {
-            richInputState.dismissedAgentPaneID = nil
+        let richInputState = richInputState(for: worktreeKey)
+        richInputState.setDetectedAgentName(nil, for: paneID)
+        richInputState.clearAgentPaneDismissal(paneID)
+    }
+
+    private func worktreeKey(from note: Notification, paneID: UUID) -> WorktreeKey? {
+        if let worktreeKey = note.userInfo?[CLIAgentNotificationKey.worktreeKey] as? WorktreeKey {
+            return worktreeKey
         }
+        return appState.locatePane(paneID: paneID)?.worktreeKey
     }
 
     private var activeVCSState: VCSTabState? {

@@ -29,6 +29,7 @@ extension Notification.Name {
 
 enum CLIAgentNotificationKey {
     static let paneID = "paneID"
+    static let worktreeKey = "worktreeKey"
     static let agentName = "agentName"
     static let previousAgentName = "previousAgentName"
 }

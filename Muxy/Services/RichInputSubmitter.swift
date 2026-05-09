@@ -16,11 +16,13 @@ enum RichInputSubmitter {
         richInput: RichInputState,
         paneID: UUID,
         appendReturn: Bool,
-        clearAfterSend: Bool = false
+        clearAfterSend: Bool = false,
+        focusRichInputAfterSend: Bool = false
     ) {
         let body = richInput.text
         let fileAttachments = richInput.fileAttachments
         let imageAttachments = richInput.imageAttachments
+        let submittedDraft = richInput.draft
         let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedBody.isEmpty || !fileAttachments.isEmpty || !imageAttachments.isEmpty else { return }
 
@@ -42,6 +44,9 @@ enum RichInputSubmitter {
 
         Task { @MainActor in
             guard let view = TerminalViewRegistry.shared.existingView(for: paneID) else { return }
+            if clearAfterSend, richInput.clearComposition(ifCurrentDraftEquals: submittedDraft) {
+                richInput.focusVersion += 1
+            }
             view.clearTerminalInput()
             try? await Task.sleep(for: initialDelay)
 
@@ -70,10 +75,9 @@ enum RichInputSubmitter {
                 SystemPasteboardSnapshot.restore(items: savedClipboard)
             }
 
-            if clearAfterSend {
-                richInput.clearComposition()
+            if focusRichInputAfterSend {
                 richInput.focusVersion += 1
-            } else {
+            } else if !clearAfterSend {
                 view.window?.makeFirstResponder(view)
             }
         }

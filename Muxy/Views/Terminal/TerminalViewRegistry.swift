@@ -38,6 +38,7 @@ final class TerminalViewRegistry {
 
     func removeView(for paneID: UUID) {
         guard let view = views.removeValue(forKey: paneID) else { return }
+        _ = CLIAgentDetector.shared.stopAndClear(paneID: paneID)
         paneIDs.removeValue(forKey: ObjectIdentifier(view))
         view.tearDown()
     }

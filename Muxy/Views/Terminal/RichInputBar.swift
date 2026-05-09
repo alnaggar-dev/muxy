@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct RichInputBar: View {
     @Bindable var state: RichInputState
     let worktreeKey: WorktreeKey
+    let paneID: UUID?
     let onDismiss: () -> Void
     let onSubmit: (_ appendReturn: Bool) -> Void
 
@@ -76,6 +77,14 @@ struct RichInputBar: View {
         .onChange(of: state.text) { persistDraft() }
         .onChange(of: state.fileAttachments) { persistDraft() }
         .onChange(of: state.imageAttachments) { persistDraft() }
+        .onChange(of: worktreeKey) {
+            removeSubmitMonitor()
+            installSubmitMonitor()
+        }
+        .onChange(of: paneID) {
+            removeSubmitMonitor()
+            installSubmitMonitor()
+        }
     }
 
     private var toolbar: some View {
@@ -88,7 +97,7 @@ struct RichInputBar: View {
             .accessibilityLabel("Add attachment")
             .help("Add attachment")
 
-            if let agentName = state.detectedAgentName {
+            if let agentName = state.detectedAgentName(for: paneID) {
                 agentChip(agentName: agentName)
             }
 

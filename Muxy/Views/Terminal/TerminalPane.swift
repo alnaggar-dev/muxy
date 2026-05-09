@@ -132,6 +132,8 @@ struct TerminalBridge: NSViewRepresentable {
         var wasFocused = false
         var wasOverlayActive = false
         var wasRichInputExclusiveFocusActive = false
+        var paneID: UUID?
+        var worktreeKey: WorktreeKey?
     }
 
     func makeCoordinator() -> Coordinator {
@@ -170,6 +172,8 @@ struct TerminalBridge: NSViewRepresentable {
         configureSearchCallbacks(view)
         configureFileOpenCallback(view)
         configureProgressCallback(view)
+        context.coordinator.paneID = state.id
+        context.coordinator.worktreeKey = worktreeKey
         context.coordinator.wasFocused = focused
         context.coordinator.wasRichInputExclusiveFocusActive = richInputExclusiveFocusActive
         if focused {
@@ -213,6 +217,8 @@ struct TerminalBridge: NSViewRepresentable {
         configureSearchCallbacks(nsView)
         configureFileOpenCallback(nsView)
         configureProgressCallback(nsView)
+        context.coordinator.paneID = state.id
+        context.coordinator.worktreeKey = worktreeKey
         let wasFocused = context.coordinator.wasFocused
         let wasOverlayActive = context.coordinator.wasOverlayActive
         let wasRichInputExclusiveFocusActive = context.coordinator.wasRichInputExclusiveFocusActive
@@ -250,29 +256,50 @@ struct TerminalBridge: NSViewRepresentable {
         }
     }
 
+    static func dismantleNSView(_: GhosttyTerminalNSView, coordinator: Coordinator) {
+        guard let paneID = coordinator.paneID else { return }
+        if CLIAgentDetector.shared.stopAndClear(paneID: paneID) {
+            postCLIAgentExited(paneID: paneID, worktreeKey: coordinator.worktreeKey)
+        }
+    }
+
     private func startCLIAgentDetector() {
         let paneID = state.id
+        let worktreeKey = worktreeKey
         CLIAgentDetector.shared.start(
             paneID: paneID,
             onAgentDetected: { name, previous in
+                var userInfo = Self.agentUserInfo(paneID: paneID, worktreeKey: worktreeKey)
+                userInfo[CLIAgentNotificationKey.agentName] = name
+                if let previous {
+                    userInfo[CLIAgentNotificationKey.previousAgentName] = previous
+                }
                 NotificationCenter.default.post(
                     name: .cliAgentDetected,
                     object: nil,
-                    userInfo: [
-                        CLIAgentNotificationKey.paneID: paneID,
-                        CLIAgentNotificationKey.agentName: name,
-                        CLIAgentNotificationKey.previousAgentName: previous as Any,
-                    ]
+                    userInfo: userInfo
                 )
             },
             onAgentExited: {
-                NotificationCenter.default.post(
-                    name: .cliAgentExited,
-                    object: nil,
-                    userInfo: [CLIAgentNotificationKey.paneID: paneID]
-                )
+                Self.postCLIAgentExited(paneID: paneID, worktreeKey: worktreeKey)
             }
         )
+    }
+
+    private static func postCLIAgentExited(paneID: UUID, worktreeKey: WorktreeKey?) {
+        NotificationCenter.default.post(
+            name: .cliAgentExited,
+            object: nil,
+            userInfo: agentUserInfo(paneID: paneID, worktreeKey: worktreeKey)
+        )
+    }
+
+    private static func agentUserInfo(paneID: UUID, worktreeKey: WorktreeKey?) -> [AnyHashable: Any] {
+        var userInfo: [AnyHashable: Any] = [CLIAgentNotificationKey.paneID: paneID]
+        if let worktreeKey {
+            userInfo[CLIAgentNotificationKey.worktreeKey] = worktreeKey
+        }
+        return userInfo
     }
 
     private func makeExternalDragHoverHandler(areaID: UUID) -> (Bool) -> Void {
