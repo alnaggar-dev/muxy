@@ -22,6 +22,15 @@ extension Notification.Name {
     static let vcsDidRefresh = Notification.Name("MuxyVCSDidRefresh")
     static let externalDragHoverChanged = Notification.Name("MuxyExternalDragHoverChanged")
     static let toggleRichInput = Notification.Name("MuxyToggleRichInput")
+    static let requestShowRichInput = Notification.Name("MuxyRequestShowRichInput")
+    static let cliAgentDetected = Notification.Name("MuxyCLIAgentDetected")
+    static let cliAgentExited = Notification.Name("MuxyCLIAgentExited")
+}
+
+enum CLIAgentNotificationKey {
+    static let paneID = "paneID"
+    static let agentName = "agentName"
+    static let previousAgentName = "previousAgentName"
 }
 
 enum ExternalDragHoverUserInfoKey {

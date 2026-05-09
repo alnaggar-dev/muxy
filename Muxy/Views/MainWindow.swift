@@ -1,5 +1,8 @@
 import AppKit
+import os
 import SwiftUI
+
+private let mainWindowLogger = Logger(subsystem: "app.muxy", category: "MainWindow")
 
 struct MainWindow: View {
     @Environment(AppState.self) private var appState
@@ -62,6 +65,10 @@ struct MainWindow: View {
     @State private var richInputPanelVisible = false
     @AppStorage("muxy.richInputPanelWidth") private var richInputPanelWidth: Double = .init(RichInputPanelLayout.defaultWidth)
     @AppStorage(RichInputPreferences.fontSizeKey) private var richInputFontSize: Double = RichInputPreferences.defaultFontSize
+    @AppStorage(RichInputPreferences.layoutKey) private var richInputLayoutRaw: String = RichInputLayout.defaultValue.rawValue
+    @AppStorage(RichInputPreferences.exclusiveFocusKey) private var richInputExclusiveFocus: Bool = false
+    @AppStorage(RichInputPreferences.autoDetectKey) private var richInputAutoDetect: Bool = false
+    @AppStorage(RichInputPreferences.clearAfterSendKey) private var richInputClearAfterSend: Bool = false
     @State private var richInputStates: [WorktreeKey: RichInputState] = [:]
     @State private var showQuickOpen = false
     @State private var showFindInFiles = false
@@ -110,35 +117,11 @@ struct MainWindow: View {
 
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
-                        ZStack {
-                            MuxyTheme.bg
-                            if let project = activeProject,
-                               appState.workspaceRoot(for: project.id) == nil,
-                               let worktree = resolvedActiveWorktree(for: project)
-                            {
-                                EmptyProjectPlaceholder(project: project) {
-                                    appState.selectWorktree(projectID: project.id, worktree: worktree)
-                                }
-                            } else if projectsWithWorkspaces.isEmpty {
-                                WelcomeView()
-                            } else if let project = activeProjectWithWorkspace,
-                                      let activeKey = appState.activeWorktreeKey(for: project.id)
-                            {
-                                ForEach(mountedWorktreeKeys(for: project), id: \.self) { key in
-                                    TerminalArea(
-                                        project: project,
-                                        worktreeKey: key,
-                                        isActiveProject: key == activeKey
-                                    )
-                                    .opacity(key == activeKey ? 1 : 0)
-                                    .allowsHitTesting(key == activeKey)
-                                    .zIndex(key == activeKey ? 1 : 0)
-                                }
-                            }
-                        }
-
+                        terminalWorkspaceArea
                         rightSidePanel
                     }
+
+                    horizontalRichInputBar
 
                     ProjectStatusBar(
                         activePane: activeTerminalPane,
@@ -150,6 +133,7 @@ struct MainWindow: View {
             }
         }
         .environment(\.overlayActive, showQuickOpen || showFindInFiles || showWorktreeSwitcher || overlayAnimatingOut)
+        .environment(\.richInputExclusiveFocusActive, richInputExclusiveFocusLockActive)
         .overlay(alignment: toastAlignment) {
             if let toast = ToastState.shared.message {
                 HStack(spacing: UIMetrics.spacing3) {
@@ -261,6 +245,12 @@ struct MainWindow: View {
             onToggleFileTree: { toggleFileTreePanel() },
             onToggleRichInput: { toggleRichInputPanel() }
         ))
+        .modifier(RichInputNotificationListeners(
+            onRequestShow: { handleRequestShowRichInput() },
+            onAgentDetected: { note in handleCLIAgentDetected(note: note) },
+            onAgentExited: { note in handleCLIAgentExited(note: note) }
+        ))
+        .animation(.easeInOut(duration: 0.2), value: richInputPanelVisible)
         .onChange(of: vcsPruneSignature) {
             pruneFileTreeStates()
         }
@@ -687,6 +677,7 @@ struct MainWindow: View {
     @ViewBuilder
     private var rightSidePanel: some View {
         if richInputPanelVisible,
+           richInputLayout == .vertical,
            let richInputState = activeRichInputState,
            let worktreeKey = activeWorktreeKey
         {
@@ -748,6 +739,60 @@ struct MainWindow: View {
                 .frame(width: CGFloat(fileTreePanelWidth))
             }
         }
+    }
+
+    private var terminalWorkspaceArea: some View {
+        ZStack {
+            MuxyTheme.bg
+            if let project = activeProject,
+               appState.workspaceRoot(for: project.id) == nil,
+               let worktree = resolvedActiveWorktree(for: project)
+            {
+                EmptyProjectPlaceholder(project: project) {
+                    appState.selectWorktree(projectID: project.id, worktree: worktree)
+                }
+            } else if projectsWithWorkspaces.isEmpty {
+                WelcomeView()
+            } else if let project = activeProjectWithWorkspace,
+                      let activeKey = appState.activeWorktreeKey(for: project.id)
+            {
+                ForEach(mountedWorktreeKeys(for: project), id: \.self) { key in
+                    TerminalArea(
+                        project: project,
+                        worktreeKey: key,
+                        isActiveProject: key == activeKey
+                    )
+                    .opacity(key == activeKey ? 1 : 0)
+                    .allowsHitTesting(key == activeKey)
+                    .zIndex(key == activeKey ? 1 : 0)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var horizontalRichInputBar: some View {
+        if richInputPanelVisible,
+           richInputLayout == .horizontal,
+           let richInputState = activeRichInputState,
+           let worktreeKey = activeWorktreeKey
+        {
+            RichInputBar(
+                state: richInputState,
+                worktreeKey: worktreeKey,
+                onDismiss: { closeRichInputPanel() },
+                onSubmit: { appendReturn in submitRichInput(richInputState, appendReturn: appendReturn) }
+            )
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    private var richInputLayout: RichInputLayout {
+        RichInputLayout(rawValue: richInputLayoutRaw) ?? .defaultValue
+    }
+
+    private var richInputExclusiveFocusLockActive: Bool {
+        richInputPanelVisible && richInputExclusiveFocus
     }
 
     private func sidePanelResizeHandle(onDrag: @escaping (CGFloat) -> Void) -> some View {
@@ -889,6 +934,13 @@ struct MainWindow: View {
     }
 
     private func closeRichInputPanel() {
+        if richInputPanelVisible,
+           let richInputState = activeRichInputState,
+           richInputState.detectedAgentName != nil,
+           let paneID = activeRichInputPaneID
+        {
+            richInputState.dismissedAgentPaneID = paneID
+        }
         richInputPanelVisible = false
         guard let paneID = activeRichInputPaneID,
               let view = TerminalViewRegistry.shared.existingView(for: paneID)
@@ -900,7 +952,62 @@ struct MainWindow: View {
 
     private func submitRichInput(_ richInput: RichInputState, appendReturn: Bool) {
         guard let paneID = activeRichInputPaneID else { return }
-        RichInputSubmitter.submit(richInput: richInput, paneID: paneID, appendReturn: appendReturn)
+        RichInputSubmitter.submit(
+            richInput: richInput,
+            paneID: paneID,
+            appendReturn: appendReturn,
+            clearAfterSend: richInputClearAfterSend
+        )
+    }
+
+    private func handleRequestShowRichInput() {
+        guard let richInputState = activeRichInputState else { return }
+        guard !richInputPanelVisible else { return }
+        richInputPanelVisible = true
+        richInputState.focusVersion += 1
+        vcsPanelVisible = false
+        fileTreePanelVisible = false
+    }
+
+    private func handleCLIAgentDetected(note: Notification) {
+        guard let paneID = note.userInfo?[CLIAgentNotificationKey.paneID] as? UUID,
+              let agentName = note.userInfo?[CLIAgentNotificationKey.agentName] as? String
+        else { return }
+        let previous = note.userInfo?[CLIAgentNotificationKey.previousAgentName] as? String
+        let activePaneDesc = activeRichInputPaneID?.uuidString ?? "nil"
+        let layoutDesc = richInputLayout.rawValue
+        mainWindowLogger.debug(
+            """
+            handleCLIAgentDetected: pane=\(paneID) agent=\(agentName) \
+            previous=\(previous ?? "nil") activePane=\(activePaneDesc) \
+            autoDetect=\(self.richInputAutoDetect) layout=\(layoutDesc) \
+            panelVisible=\(self.richInputPanelVisible)
+            """
+        )
+        guard paneID == activeRichInputPaneID,
+              let richInputState = activeRichInputState
+        else { return }
+        richInputState.detectedAgentName = agentName
+        if richInputState.dismissedAgentPaneID != paneID {
+            richInputState.dismissedAgentPaneID = nil
+        }
+        guard previous == nil else { return }
+        guard richInputAutoDetect,
+              richInputLayout == .horizontal,
+              richInputState.dismissedAgentPaneID != paneID
+        else { return }
+        handleRequestShowRichInput()
+    }
+
+    private func handleCLIAgentExited(note: Notification) {
+        guard let paneID = note.userInfo?[CLIAgentNotificationKey.paneID] as? UUID,
+              paneID == activeRichInputPaneID,
+              let richInputState = activeRichInputState
+        else { return }
+        richInputState.detectedAgentName = nil
+        if richInputState.dismissedAgentPaneID == paneID {
+            richInputState.dismissedAgentPaneID = nil
+        }
     }
 
     private var activeVCSState: VCSTabState? {
@@ -1263,6 +1370,25 @@ private struct WindowOpenReceiver: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .openHelpWindow)) { _ in
                 openWindow(id: "help")
+            }
+    }
+}
+
+private struct RichInputNotificationListeners: ViewModifier {
+    let onRequestShow: () -> Void
+    let onAgentDetected: (Notification) -> Void
+    let onAgentExited: (Notification) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .requestShowRichInput)) { _ in
+                onRequestShow()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .cliAgentDetected)) { note in
+                onAgentDetected(note)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .cliAgentExited)) { note in
+                onAgentExited(note)
             }
     }
 }

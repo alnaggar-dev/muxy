@@ -8,6 +8,8 @@ final class RichInputState {
     var imageAttachments: [URL] = []
     var imagePlaceholderCounter: Int = 0
     var focusVersion: Int = 0
+    var detectedAgentName: String?
+    var dismissedAgentPaneID: UUID?
 
     func nextImagePlaceholder(for url: URL) -> String {
         imagePlaceholderCounter += 1
@@ -29,5 +31,12 @@ final class RichInputState {
             imageAttachments: imageAttachments,
             imagePlaceholderCounter: imagePlaceholderCounter
         )
+    }
+
+    func clearComposition() {
+        text = ""
+        fileAttachments = []
+        imageAttachments = []
+        imagePlaceholderCounter = 0
     }
 }

@@ -12,7 +12,12 @@ enum RichInputSubmitter {
         case image(URL)
     }
 
-    static func submit(richInput: RichInputState, paneID: UUID, appendReturn: Bool) {
+    static func submit(
+        richInput: RichInputState,
+        paneID: UUID,
+        appendReturn: Bool,
+        clearAfterSend: Bool = false
+    ) {
         let body = richInput.text
         let fileAttachments = richInput.fileAttachments
         let imageAttachments = richInput.imageAttachments
@@ -65,7 +70,12 @@ enum RichInputSubmitter {
                 SystemPasteboardSnapshot.restore(items: savedClipboard)
             }
 
-            view.window?.makeFirstResponder(view)
+            if clearAfterSend {
+                richInput.clearComposition()
+                richInput.focusVersion += 1
+            } else {
+                view.window?.makeFirstResponder(view)
+            }
         }
     }
 

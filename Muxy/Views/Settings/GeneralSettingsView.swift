@@ -14,6 +14,14 @@ struct GeneralSettingsView: View {
     private var updateChannelRaw = UpdateChannel.stable.rawValue
     @AppStorage(QuitConfirmationPreferences.confirmQuitKey)
     private var confirmQuit = true
+    @AppStorage(RichInputPreferences.layoutKey)
+    private var richInputLayoutRaw: String = RichInputLayout.defaultValue.rawValue
+    @AppStorage(RichInputPreferences.exclusiveFocusKey)
+    private var richInputExclusiveFocus = false
+    @AppStorage(RichInputPreferences.autoDetectKey)
+    private var richInputAutoDetect = false
+    @AppStorage(RichInputPreferences.clearAfterSendKey)
+    private var richInputClearAfterSend = false
 
     var body: some View {
         SettingsContainer {
@@ -69,6 +77,36 @@ struct GeneralSettingsView: View {
                 )
             }
 
+            SettingsSection(
+                "Rich Input",
+                footer: "Vertical opens as a side panel. Horizontal pins a compact bar above the status bar. "
+                    + "Locking focus keeps typing exclusively in the rich input field while it's open. "
+                    + "Auto-show only applies to the horizontal layout."
+            ) {
+                SettingsRow("Layout") {
+                    Picker("", selection: layoutBinding) {
+                        ForEach(RichInputLayout.allCases) { layout in
+                            Text(layout.displayName).tag(layout)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: SettingsMetrics.controlWidth, alignment: .trailing)
+                }
+                SettingsToggleRow(
+                    label: "Lock focus to rich input while open",
+                    isOn: $richInputExclusiveFocus
+                )
+                SettingsToggleRow(
+                    label: "Clear rich input after sending",
+                    isOn: $richInputClearAfterSend
+                )
+                SettingsToggleRow(
+                    label: "Auto-show for CLI agents (horizontal only)",
+                    isOn: $richInputAutoDetect
+                )
+                .disabled(layoutBinding.wrappedValue != .horizontal)
+            }
+
             SettingsSection("Quit", showsDivider: false) {
                 SettingsToggleRow(
                     label: "Confirm before quitting Muxy",
@@ -76,6 +114,13 @@ struct GeneralSettingsView: View {
                 )
             }
         }
+    }
+
+    private var layoutBinding: Binding<RichInputLayout> {
+        Binding(
+            get: { RichInputLayout(rawValue: richInputLayoutRaw) ?? .defaultValue },
+            set: { richInputLayoutRaw = $0.rawValue }
+        )
     }
 
     private var channelBinding: Binding<UpdateChannel> {

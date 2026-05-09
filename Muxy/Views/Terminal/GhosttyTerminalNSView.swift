@@ -28,6 +28,7 @@ final class GhosttyTerminalNSView: NSView {
     var hasOSC8LinkUnderCursor: Bool = false
     var isFocused: Bool = false
     var overlayActive: Bool = false
+    var richInputExclusiveFocusActive: Bool = false
 
     var processExitHandled = false
 
@@ -374,7 +375,7 @@ final class GhosttyTerminalNSView: NSView {
         ghostty_surface_set_focus(surface, false)
     }
 
-    override var acceptsFirstResponder: Bool { !overlayActive }
+    override var acceptsFirstResponder: Bool { !overlayActive && !richInputExclusiveFocusActive }
 
     override func becomeFirstResponder() -> Bool {
         let result = super.becomeFirstResponder()
@@ -416,7 +417,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if overlayActive { return }
+        if overlayActive || richInputExclusiveFocusActive { return }
         guard let surface else { super.keyDown(with: event)
             return
         }
@@ -504,7 +505,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func keyUp(with event: NSEvent) {
-        if overlayActive { return }
+        if overlayActive || richInputExclusiveFocusActive { return }
         guard let surface else { return }
         var keyEvent = buildKeyEvent(from: event, action: GHOSTTY_ACTION_RELEASE)
         keyEvent.text = nil
@@ -512,7 +513,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func flagsChanged(with event: NSEvent) {
-        if overlayActive { return }
+        if overlayActive || richInputExclusiveFocusActive { return }
         guard let surface else { return }
         if hasMarkedText() { return }
         let action: ghostty_input_action_e = isFlagPress(event) ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE
@@ -524,7 +525,7 @@ final class GhosttyTerminalNSView: NSView {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if isAppShortcut(event) { return false }
-        if overlayActive { return false }
+        if overlayActive || richInputExclusiveFocusActive { return false }
         guard window?.firstResponder === self || window?.firstResponder === inputContext else { return false }
         guard event.type == .keyDown, let surface else { return false }
 
@@ -552,7 +553,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        if overlayActive { return }
+        if overlayActive || richInputExclusiveFocusActive { return }
         guard let surface else { return }
         let alreadyFirstResponder = window?.firstResponder === self
         window?.makeFirstResponder(self)
@@ -582,7 +583,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if overlayActive { return }
+        if overlayActive || richInputExclusiveFocusActive { return }
         guard let surface else { return }
         let pt = mousePoint(from: event)
         ghostty_surface_mouse_pos(surface, pt.x, pt.y, modsFromEvent(event))
@@ -727,7 +728,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
-        if overlayActive { return }
+        if overlayActive || richInputExclusiveFocusActive { return }
         guard let surface else { return }
         let pt = mousePoint(from: event)
         ghostty_surface_mouse_pos(surface, pt.x, pt.y, modsFromEvent(event))
@@ -738,7 +739,7 @@ final class GhosttyTerminalNSView: NSView {
     }
 
     override func rightMouseUp(with event: NSEvent) {
-        if overlayActive { return }
+        if overlayActive || richInputExclusiveFocusActive { return }
         guard let surface else { return }
         let pt = mousePoint(from: event)
         ghostty_surface_mouse_pos(surface, pt.x, pt.y, modsFromEvent(event))
@@ -1019,6 +1020,13 @@ final class GhosttyTerminalNSView: NSView {
                 + Data(sanitized.utf8)
                 + TerminalControlBytes.bracketedPasteEnd
         )
+    }
+
+    var foregroundProcessPID: pid_t? {
+        guard let surface else { return nil }
+        let raw = ghostty_surface_foreground_pid(surface)
+        guard raw != 0 else { return nil }
+        return pid_t(exactly: raw)
     }
 
     func clearTerminalInput() {

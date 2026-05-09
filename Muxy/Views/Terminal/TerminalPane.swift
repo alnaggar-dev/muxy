@@ -125,11 +125,13 @@ struct TerminalBridge: NSViewRepresentable {
     let onProcessExit: () -> Void
     let onSplitRequest: (SplitDirection, SplitPosition) -> Void
     @Environment(\.overlayActive) private var overlayActive
+    @Environment(\.richInputExclusiveFocusActive) private var richInputExclusiveFocusActive
     @Environment(\.activeWorktreeKey) private var worktreeKey
 
     final class Coordinator {
         var wasFocused = false
         var wasOverlayActive = false
+        var wasRichInputExclusiveFocusActive = false
     }
 
     func makeCoordinator() -> Coordinator {
@@ -149,6 +151,7 @@ struct TerminalBridge: NSViewRepresentable {
         }
         view.isFocused = focused
         view.overlayActive = overlayActive
+        view.richInputExclusiveFocusActive = richInputExclusiveFocusActive
         view.setVisible(visible)
         view.onFocus = onFocus
         view.onProcessExit = onProcessExit
@@ -168,7 +171,11 @@ struct TerminalBridge: NSViewRepresentable {
         configureFileOpenCallback(view)
         configureProgressCallback(view)
         context.coordinator.wasFocused = focused
-        if focused, !overlayActive {
+        context.coordinator.wasRichInputExclusiveFocusActive = richInputExclusiveFocusActive
+        if focused {
+            startCLIAgentDetector()
+        }
+        if focused, !overlayActive, !richInputExclusiveFocusActive {
             view.notifySurfaceFocused()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 view.window?.makeFirstResponder(view)
@@ -187,6 +194,7 @@ struct TerminalBridge: NSViewRepresentable {
             nsView.envVars = TerminalEnvVarBuilder.build(paneID: state.id, worktreeKey: key)
         }
         nsView.overlayActive = overlayActive
+        nsView.richInputExclusiveFocusActive = richInputExclusiveFocusActive
         nsView.setVisible(visible)
         nsView.onFocus = onFocus
         nsView.onProcessExit = onProcessExit
@@ -207,8 +215,15 @@ struct TerminalBridge: NSViewRepresentable {
         configureProgressCallback(nsView)
         let wasFocused = context.coordinator.wasFocused
         let wasOverlayActive = context.coordinator.wasOverlayActive
+        let wasRichInputExclusiveFocusActive = context.coordinator.wasRichInputExclusiveFocusActive
+        if focused, !wasFocused {
+            startCLIAgentDetector()
+        } else if !focused, wasFocused {
+            CLIAgentDetector.shared.stop(paneID: state.id)
+        }
         context.coordinator.wasFocused = focused
         context.coordinator.wasOverlayActive = overlayActive
+        context.coordinator.wasRichInputExclusiveFocusActive = richInputExclusiveFocusActive
         nsView.isFocused = focused
 
         if overlayActive {
@@ -218,7 +233,14 @@ struct TerminalBridge: NSViewRepresentable {
             if !wasOverlayActive {
                 nsView.notifySurfaceUnfocused()
             }
-        } else if focused, !wasFocused || wasOverlayActive {
+        } else if richInputExclusiveFocusActive {
+            if nsView.window?.firstResponder === nsView || nsView.window?.firstResponder === nsView.inputContext {
+                nsView.window?.makeFirstResponder(nil)
+            }
+            if !wasRichInputExclusiveFocusActive {
+                nsView.notifySurfaceUnfocused()
+            }
+        } else if focused, !wasFocused || wasOverlayActive || wasRichInputExclusiveFocusActive {
             nsView.notifySurfaceFocused()
             DispatchQueue.main.async {
                 nsView.window?.makeFirstResponder(nsView)
@@ -226,6 +248,31 @@ struct TerminalBridge: NSViewRepresentable {
         } else if !focused, wasFocused {
             nsView.notifySurfaceUnfocused()
         }
+    }
+
+    private func startCLIAgentDetector() {
+        let paneID = state.id
+        CLIAgentDetector.shared.start(
+            paneID: paneID,
+            onAgentDetected: { name, previous in
+                NotificationCenter.default.post(
+                    name: .cliAgentDetected,
+                    object: nil,
+                    userInfo: [
+                        CLIAgentNotificationKey.paneID: paneID,
+                        CLIAgentNotificationKey.agentName: name,
+                        CLIAgentNotificationKey.previousAgentName: previous as Any,
+                    ]
+                )
+            },
+            onAgentExited: {
+                NotificationCenter.default.post(
+                    name: .cliAgentExited,
+                    object: nil,
+                    userInfo: [CLIAgentNotificationKey.paneID: paneID]
+                )
+            }
+        )
     }
 
     private func makeExternalDragHoverHandler(areaID: UUID) -> (Bool) -> Void {
