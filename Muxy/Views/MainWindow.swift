@@ -991,37 +991,17 @@ struct MainWindow: View {
     }
 
     private func sidePanelResizeHandle(onDrag: @escaping (CGFloat) -> Void) -> some View {
-        Rectangle().fill(MuxyTheme.border).frame(width: 1)
-            .accessibilityHidden(true)
-            .overlay {
-                Color.clear
-                    .frame(width: UIMetrics.scaled(5))
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 1)
-                            .onChanged { v in onDrag(v.translation.width) }
-                    )
-                    .onHover { on in
-                        if on { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                    }
-            }
+        ResizeHandle(axis: .horizontal) { v in
+            onDrag(v.translation.width)
+        }
+        .accessibilityHidden(true)
     }
 
     private func bottomPanelResizeHandle(onDrag: @escaping (CGFloat) -> Void) -> some View {
-        Rectangle().fill(MuxyTheme.border).frame(height: 1)
-            .accessibilityHidden(true)
-            .overlay {
-                Color.clear
-                    .frame(height: UIMetrics.scaled(5))
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 1)
-                            .onChanged { v in onDrag(v.translation.height) }
-                    )
-                    .onHover { on in
-                        if on { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-                    }
-            }
+        ResizeHandle(axis: .vertical) { v in
+            onDrag(v.translation.height)
+        }
+        .accessibilityHidden(true)
     }
 
     private var activeFileTreeState: FileTreeState? {

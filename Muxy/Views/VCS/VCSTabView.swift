@@ -1340,47 +1340,35 @@ private struct SectionSplitLayout: View {
         totalHeight: CGFloat,
         allSections: [SectionKind]
     ) -> some View {
-        Rectangle().fill(MuxyTheme.border).frame(height: 1)
-            .overlay {
-                Color.clear
-                    .frame(height: UIMetrics.scaled(5))
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 1)
-                            .onChanged { v in
-                                guard totalHeight > 0 else { return }
-                                let delta = v.translation.height / totalHeight
+        ResizeHandle(axis: .vertical) { v in
+            guard totalHeight > 0 else { return }
+            let delta = v.translation.height / totalHeight
 
-                                guard let aboveIdx = allSections.firstIndex(of: above),
-                                      let belowIdx = allSections.firstIndex(of: below)
-                                else { return }
+            guard let aboveIdx = allSections.firstIndex(of: above),
+                  let belowIdx = allSections.firstIndex(of: below)
+            else { return }
 
-                                var ratios = state.sectionRatios
-                                if ratios.count < allSections.count {
-                                    let fill = 1.0 / CGFloat(allSections.count)
-                                    ratios.append(contentsOf: Array(repeating: fill, count: allSections.count - ratios.count))
-                                }
-                                guard aboveIdx < ratios.count, belowIdx < ratios.count else { return }
-                                let minRatio: CGFloat = 0.08
-
-                                ratios[aboveIdx] += delta
-                                ratios[belowIdx] -= delta
-
-                                ratios[aboveIdx] = max(minRatio, ratios[aboveIdx])
-                                ratios[belowIdx] = max(minRatio, ratios[belowIdx])
-
-                                let sum = ratios.reduce(0, +)
-                                if sum > 0 {
-                                    ratios = ratios.map { $0 / sum }
-                                }
-
-                                state.sectionRatios = ratios
-                            }
-                    )
-                    .onHover { on in
-                        if on { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-                    }
+            var ratios = state.sectionRatios
+            if ratios.count < allSections.count {
+                let fill = 1.0 / CGFloat(allSections.count)
+                ratios.append(contentsOf: Array(repeating: fill, count: allSections.count - ratios.count))
             }
+            guard aboveIdx < ratios.count, belowIdx < ratios.count else { return }
+            let minRatio: CGFloat = 0.08
+
+            ratios[aboveIdx] += delta
+            ratios[belowIdx] -= delta
+
+            ratios[aboveIdx] = max(minRatio, ratios[aboveIdx])
+            ratios[belowIdx] = max(minRatio, ratios[belowIdx])
+
+            let sum = ratios.reduce(0, +)
+            if sum > 0 {
+                ratios = ratios.map { $0 / sum }
+            }
+
+            state.sectionRatios = ratios
+        }
     }
 
     @ViewBuilder
